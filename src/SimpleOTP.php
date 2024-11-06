@@ -40,32 +40,71 @@ class SimpleOTP{
         return 'otpauth://totp/'.urlencode($issuer).':'.urlencode($label).'?issuer='.urlencode($issuer).'&secret='.$base32.'&algorithm=SHA1&digits=6&period=30';
     }
 
-    public function TOTP(){
+    /**
+     * @return int
+     */
+    public function getHOTPCounterForTOTP(){
         $time=time();
         // Calcula el contador basado en el tiempo actual y el intervalo (timeStep)
-        $counter=floor($time/30);
-        return self::genOTP($this->binSecret, $counter);
+        $counter=intval($time/30);
+        return $counter;
+    }
+
+    public function TOTP(){
+        return self::genOTP($this->binSecret, $this->getHOTPCounterForTOTP());
     }
 
     /**
-     * @param int $extras Max: 10
-     * @param int $timeStep
-     * @return array
+     * @param int $max_diff Max: 50. Diferencia máxima permitida para el último código de la secuencia
+     * @param int|null $diff Devuelve la diferencia del último código de la secuencia, entre -50 y 50
+     * @param string ...$otp_seq Secuencia de códigos consecutivos
+     * @return bool
      */
-    public function TOTP_multi(int $extras=2){
-        $time=time();
-        // Calcula el contador basado en el tiempo actual y el intervalo (timeStep)
-        $counter=floor($time/30);
-        $res=[];
-        $extras=min(max($extras, 1), 10);
-        for($i=-$extras; $i<=$extras; ++$i){
-            $res[$i]=self::genOTP($this->binSecret, $counter+$i);
-        }
-        return $res;
+    public function checkTOTP(int $max_diff, ?int &$diff=null, string ...$otp_seq){
+        return self::checkHOTP($this->getHOTPCounterForTOTP(), $max_diff, $diff, ...$otp_seq);
     }
 
     public function HOTP(int $counter){
         return self::genOTP($this->binSecret, $counter);
+    }
+
+    /**
+     * @param int $counter
+     * @param int $max_diff Max: 50. Diferencia máxima permitida para el último código de la secuencia
+     * @param int|null $diff Devuelve la diferencia del último código de la secuencia, entre -50 y 50
+     * @param string ...$otp_seq Secuencia de códigos consecutivos
+     * @return bool
+     */
+    public function checkHOTP(int $counter, int $max_diff=0, ?int &$diff=null, string ...$otp_seq){
+        $diff=0;
+        if(count($otp_seq)==0) return false;
+        $otp=array_pop($otp_seq);
+        $found=false;
+        if($otp===self::genOTP($this->binSecret, $counter)){
+            $found=true;
+        }
+        $max_diff=min($max_diff, 50);
+        if(!$found && $max_diff>0) while(++$diff<=$max_diff && $counter+$diff>0){
+            if($otp===self::genOTP($this->binSecret, $counter+$diff)){
+                $found=true;
+                $counter+=$diff;
+                break;
+            }
+            if($otp===self::genOTP($this->binSecret, $counter-$diff)){
+                $diff=-$diff;
+                $found=true;
+                $counter+=$diff;
+                break;
+            }
+        }
+        if(!$found){
+            $diff=null;
+            return false;
+        }
+        foreach(array_reverse($otp_seq) AS $otp){
+            if($otp!==self::genOTP($this->binSecret, --$counter)) return false;
+        }
+        return true;
     }
 
     public static function bin_base32(string $bin){
