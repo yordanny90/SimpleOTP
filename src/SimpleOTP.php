@@ -82,7 +82,7 @@ class SimpleOTP{
      * @return bool
      */
     public function checkTOTP(string $code, int $time_diff=0, ?int &$time_used=null){
-        $t=$this->counterToTime($this->timeToCounter());
+        $t=time();
         $time_diff=abs($time_diff);
         $counterA=$this->timeToCounter($t-$time_diff);
         $counterB=$this->timeToCounter($t+$time_diff);
